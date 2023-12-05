@@ -53,10 +53,10 @@ class ChangeDetector:
         self.change_map_metrics = {
             "ACC": tf.keras.metrics.Accuracy(),
             "Kappa": CohenKappa(num_classes=2),
-            "TP": tf.keras.metrics.TruePositives(),
-            "TN": tf.keras.metrics.TrueNegatives(),
-            "FP": tf.keras.metrics.FalsePositives(),
-            "FN": tf.keras.metrics.FalseNegatives(),
+            "TP": tf.keras.metrics.TruePositives(name='tp'),
+            "TN": tf.keras.metrics.TrueNegatives(name='tn'),
+            "FP": tf.keras.metrics.FalsePositives(name='fp'),
+            "FN": tf.keras.metrics.FalseNegatives(name='fn'),            
         }
         assert not set(self.difference_img_metrics) & set(self.change_map_metrics)
         # If the metric dictionaries shares keys, the history will not work
@@ -143,14 +143,28 @@ class ChangeDetector:
                 False positive  - Green  [0,1,0]
                 False negative  - Red    [1,0,0]
         """
+
+        target_change_map_aux = tf.where(
+            tf.equal(target_change_map, -1),
+            tf.constant(False, dtype=tf.bool),
+            tf.cast(target_change_map, dtype=tf.bool),
+        )
+
         conf_map = tf.concat(
             [
-                target_change_map,
+                target_change_map_aux,
                 change_map,
-                tf.math.logical_and(target_change_map, change_map),
+                tf.math.logical_and(target_change_map_aux, change_map),
             ],
             axis=-1,
             name="confusion map",
+        )
+
+        # where target_change_map is -1, set to [0,1,1]
+        conf_map = tf.where(
+            tf.equal(target_change_map, -1),
+            tf.constant([True, True, False], dtype=tf.bool),
+            conf_map,
         )
 
         return tf.cast(conf_map, tf.float32)
@@ -295,6 +309,11 @@ class ChangeDetector:
                 None
         """
         y_true, y_pred = tf.reshape(y_true, [-1]), tf.reshape(y_pred, [-1])
+
+        mask = tf.not_equal(y_true, -1)
+        y_pred = tf.boolean_mask(y_pred, mask)
+        y_true = tf.boolean_mask(y_true, mask)
+
         for name, metric in metrics.items():
             metric.update_state(y_true, y_pred)
             self.metrics_history[name].append(metric.result().numpy())
@@ -330,8 +349,13 @@ class ChangeDetector:
         print("ChangeDetector.save_model() is not implemented")
 
     @image_to_tensorboard(static_name="z_ROC_Curve")
-    def _ROC_curve(self, y_true, y_pred):
+    def _ROC_curve(self, y_true, y_pred):        
         y_true, y_pred = tf.reshape(y_true, [-1]), tf.reshape(y_pred, [-1])
+        
+        mask = tf.not_equal(y_true, -1)
+        y_pred = tf.boolean_mask(y_pred, mask)
+        y_true = tf.boolean_mask(y_true, mask)
+        
         fpr, tpr, _ = roc_curve(y_true, y_pred)
         roc_auc = auc(fpr, tpr)
         fig = plt.figure()

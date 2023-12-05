@@ -79,7 +79,7 @@ def threshold_otsu(image):
     return threshold
 
 
-def _dense_gaussian_filtering(x, y, difference_img):
+def _dense_gaussian_filtering(x, y, difference_img, **kwargs):
     """
         Concerning the filtering, the method proposed in
         krahenbuhl2011efficient is used. It exploits spatial context to
@@ -99,6 +99,12 @@ def _dense_gaussian_filtering(x, y, difference_img):
         $5$ iterations and a kernel width of $0.1$.
     """
 
+    sd_gauss = kwargs["sd_gauss"]
+    compat_gauss = kwargs["compat_gauss"]
+    sd_bilateral = kwargs["sd_bilateral"]
+    schan_bilateral = kwargs["schan_bilateral"]
+    compat_bilateral = kwargs["compat_bilateral"]
+
     d = np.array(difference_img[0])
     d = np.concatenate((d, 1.0 - d), axis=2)
     W, H = d.shape[:2]
@@ -110,12 +116,12 @@ def _dense_gaussian_filtering(x, y, difference_img):
     U = U.transpose(2, 0, 1).reshape((2, -1))
     U = U.copy(order="C")
     CD.setUnaryEnergy(U.astype(np.float32))
-    pairwise_energy_gaussian = create_pairwise_gaussian((10, 10), (W, H))
-    CD.addPairwiseEnergy(pairwise_energy_gaussian, compat=1)
+    pairwise_energy_gaussian = create_pairwise_gaussian((sd_gauss, sd_gauss), (W, H))
+    CD.addPairwiseEnergy(pairwise_energy_gaussian, compat=compat_gauss)
     pairwise_energy_bilateral = create_pairwise_bilateral(
-        sdims=(10, 10), schan=(0.1,), img=stack, chdim=2
+        sdims=(sd_bilateral, sd_bilateral), schan=schan_bilateral, img=stack, chdim=2
     )
-    CD.addPairwiseEnergy(pairwise_energy_bilateral, compat=1)
+    CD.addPairwiseEnergy(pairwise_energy_bilateral, compat=compat_bilateral)
     Q = CD.inference(3)
     heatmap = np.array(Q, dtype=np.float32)
     heatmap = np.reshape(heatmap[0, ...], (1, W, H, 1))
@@ -159,7 +165,7 @@ def decorated_median_filter(static_name, pre_process=histogram_equalization, **k
     return median_filter2d
 
 
-def decorated_gaussian_filter(static_name, pre_process=histogram_equalization):
+def decorated_gaussian_filter(static_name, pre_process=histogram_equalization, sd_gauss=2, compat_gauss=1, sd_bilateral=2, schan_bilateral=1, compat_bilateral=2):
     """
         Wrap the gaussian filter with TensorBoard decorator and specify arguments
         Input:
@@ -169,10 +175,16 @@ def decorated_gaussian_filter(static_name, pre_process=histogram_equalization):
         Output:
             callable - takes input image as tfa.image.median_filter2d
     """
+    filter_config ={'sd_gauss': sd_gauss,
+                    'compat_gauss': compat_gauss,
+                    'sd_bilateral': sd_bilateral,
+                    'schan_bilateral': schan_bilateral,
+                    'compat_bilateral': compat_bilateral,
+                    }
 
     @image_to_tensorboard(static_name=static_name)  # , pre_process=pre_process)
     def gauss_filter(self, x, y, difference_img):
-        return _dense_gaussian_filtering(x, y, difference_img)
+        return _dense_gaussian_filtering(x, y, difference_img, **filter_config)
 
     return gauss_filter
 

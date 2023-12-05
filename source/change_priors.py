@@ -268,11 +268,11 @@ def eval_prior(name, x, y, **kwargs):
         )
         d = tf.expand_dims(d, -1)
         d = tf.image.resize(d, [D.shape[0], D.shape[1]], antialias=True)
-        write_image_to_png(d, "data/" + name + "/Affinities/" + hw + str(i) + ".png")
+        # write_image_to_png(d, "data/" + name + "/Affinities/" + hw + str(i) + ".png")
         D[..., ch] = d[..., 0]
         ch += 1
     D = np.mean(D, axis=-1, keepdims=True)
-    write_image_to_png(D, "data/" + name + "/Affinities/" + hw + "avg.png")
+    # write_image_to_png(D, "data/" + name + "/Affinities/" + hw + "avg.png")
     return D
 
 if __name__ == "__main__":

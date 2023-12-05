@@ -301,9 +301,7 @@ def test(DATASET="Texas", CONFIG=None):
     return metrics, speed
 
 if __name__ == "__main__":
-    test("Texas")
+    print(test("E_R"))
     test("California")
-    test("Italy")
-    test("France")
-    test("UK")
+
 

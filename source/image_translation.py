@@ -288,3 +288,54 @@ class CouplingNetwork(Model):
         else:
             x = sigmoid(x)
         return x
+
+
+class WeightedTranslationNetwork(Model):
+    """
+
+    """
+
+    def __init__(
+        self,
+        input_chs,
+        filter_spec,
+        name,
+        l2_lambda=1e-3,
+        leaky_alpha=0.3,
+        dropout_rate=0.2,
+        dtype="float32",
+    ):
+        """
+            Inputs:
+                input_chs -         int, number of channels in input
+                filter_spec -       list of integers specifying the filtercount
+                                    for the respective layers
+                name -              str, name of model
+                leaky_alpha=0.3 -   float in [0,1], passed to the RELU
+                                    activation of all but the last layer
+                dropout_rate=0.2 -  float in [0,1], specifying the dropout
+                                    probability in training time for all but
+                                    the last layer
+                dtype='float64' -   str or dtype, datatype of model
+            Outputs:
+                None
+        """
+        super().__init__(name=name, dtype=dtype)
+
+        self.leaky_alpha = leaky_alpha
+        self.dropout = Dropout(dropout_rate, dtype=dtype)
+
+        self.layers_ = []
+        for i in range(len(filter_spec)):
+            self.layers_.append(Conv2D(filters=filter_spec[i][1], kernel_size=filter_spec[i][2], 
+                                input_shape=[None, None, input_chs], padding="same", kernel_regularizer=l2(l2_lambda)))
+
+    def call(self, x, training=False):
+        for layer in self.layers_[:-1]:
+                x = self.dropout(x, training)
+                x = layer(x)
+                x = relu(x, alpha=self.leaky_alpha)
+        x = self.dropout(x, training)
+        x = self.layers_[-1](x)
+        x = tanh(x)
+        return x

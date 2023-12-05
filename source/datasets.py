@@ -216,7 +216,7 @@ def _EmiliaRomagna(reduce=False, nc2=3):
         remove_borders(t2, 2),
         remove_borders(change_mask, 2),
     )
-    t1, t2 = _clip(t1), _clip(t2)
+    t1, t2 = _clip(t1, log=True), _clip(t2)
 
     # import matplotlib
     # matplotlib.use("WebAgg")
@@ -236,8 +236,48 @@ def _EmiliaRomagna(reduce=False, nc2=3):
     change_mask = change_mask[..., :1]
     return t1, t2, change_mask
 
+def _EmiliaRomagna2(reduce=False, nc2=3, reduction_method="UMAP"):
+    """ Load EmiliaRomagna dataset from .npy """
+    # import matplotlib
+    # matplotlib.use("WebAgg")
+    # import matplotlib.pyplot as plt
 
-def _clip(image):
+    t1 = np.load("./data/E_R2/CSG_dualpol_20230521_mlk3_clip_resam.npy")
+    t2 = np.load(f"./data/E_R2/PRISMA_{reduction_method}_{nc2}ch.npy")
+    change_mask = np.array(np.load(f"./data/E_R2/ground_truth_flood.npy"), dtype=np.int8)
+    
+    exclude_mask = np.load(f"./data/E_R2/exclude.npy")
+    change_mask[exclude_mask==1] = -1
+
+    if t1.shape[-1] == 3:
+        t1 = t1[..., 0]
+    t1, t2, change_mask = (
+        remove_borders(t1, 2),
+        remove_borders(t2, 2),
+        remove_borders(change_mask, 2),
+    )
+    t1, t2 = _clip(t1, log=True), _clip(t2)
+
+    # import matplotlib
+    # matplotlib.use("WebAgg")
+    # import matplotlib.pyplot as plt
+    # t22 = np.array(t2)
+    # plt.hist(t22.flatten(), bins=100)
+    # plt.show()
+
+    # t11 = np.array(t1)
+    # plt.hist(t11.flatten(), bins=100)
+    # plt.show()
+
+    change_mask = tf.convert_to_tensor(change_mask, dtype=tf.int8)
+    assert t1.shape[:2] == t2.shape[:2] == change_mask.shape[:2]
+    if change_mask.ndim == 2:
+        change_mask = change_mask[..., np.newaxis]
+    change_mask = change_mask[..., :1]
+    return t1, t2, change_mask
+
+
+def _clip(image, log=False):
     """
         Normalize image from R_+ to [-1, 1].
 
@@ -261,6 +301,9 @@ def _clip(image):
     #     temp[:, i] = channel
 
     temp = np.reshape(image, (-1, image.shape[-1]))
+
+    if log:
+        temp = np.log(temp + 0.1)
 
     upper_limits = tf.reduce_mean(temp, 0) + 3.0 * tf.math.reduce_std(temp, 0)
     lower_limits = tf.reduce_mean(temp, 0) - 3.0 * tf.math.reduce_std(temp, 0)
@@ -328,6 +371,7 @@ DATASETS = {
     "UK": _uk,
     "Denmark": _denmark,
     "E_R": _EmiliaRomagna,
+    "E_R2": _EmiliaRomagna2,
 }
 prepare_data = {
     "Texas": True,
@@ -337,6 +381,7 @@ prepare_data = {
     "UK": True,
     "Denmark": False,
     "E_R": False,
+    "E_R2": False,
 }
 
 
@@ -423,7 +468,10 @@ def fetch(name, **kwargs):
                               shapes (1, h, w, ?)
             channels - tuple (c_x, c_y), number of channels for domains x and y
     """
-    x_im, y_im, target_cm = DATASETS[name](prepare_data[name])
+
+    n_ch_y = kwargs['n_channels_y']
+    red_method = kwargs['reduction_method']
+    x_im, y_im, target_cm = DATASETS[name](prepare_data[name], n_ch_y, red_method)
 
     if not tf.config.list_physical_devices("GPU"):
         dataset = [
