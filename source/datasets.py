@@ -249,8 +249,15 @@ def _EmiliaRomagna2(reduce=False, nc2=3, reduction_method="UMAP"):
     exclude_mask = np.load(f"./data/E_R2/exclude.npy")
     change_mask[exclude_mask==1] = -1
 
-    if t1.shape[-1] == 3:
-        t1 = t1[..., 0]
+    if len(t1.shape)==2:
+        t1 = t1[..., np.newaxis]
+
+    if len(t2.shape)==2:
+        t2 = t2[..., np.newaxis]
+
+    if len(change_mask.shape)==2:
+        change_mask = change_mask[..., np.newaxis]
+
     t1, t2, change_mask = (
         remove_borders(t1, 2),
         remove_borders(t2, 2),

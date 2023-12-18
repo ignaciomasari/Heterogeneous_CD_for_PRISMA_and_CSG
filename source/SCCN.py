@@ -174,7 +174,7 @@ class SCCN(ChangeDetector):
         tf.print("Pretrain done")
 
 
-def test(DATASET="Texas", CONFIG=None):
+def test(DATASET="Texas", CONFIG=None, n_ch_y=None):
     """
     1. Fetch data (x, y, change_map)
     2. Compute/estimate A_x and A_y (for patches)
@@ -188,6 +188,11 @@ def test(DATASET="Texas", CONFIG=None):
     """
     if CONFIG is None:
         CONFIG = get_config_SCCN(DATASET)
+
+    #update number of channels to n_ch_y
+    if n_ch_y is not None:
+        CONFIG.update({"n_channels_y":n_ch_y})
+
     x_im, y_im, EVALUATE, (C_X, C_Y) = datasets.fetch(DATASET, **CONFIG)
     if tf.config.list_physical_devices('GPU') is not None and not CONFIG["debug"]:
         C_CODE = CONFIG["C_CODE"]
@@ -236,14 +241,62 @@ def test(DATASET="Texas", CONFIG=None):
         cd.change_map_metrics.keys()
     ):
         metrics[key] = cd.metrics_history[key][-1]
-    metrics["F1"] = metrics["TP"] / (
-        metrics["TP"] + 0.5 * (metrics["FP"] + metrics["FN"])
-    )
+    # metrics["F1"] = metrics["TP"] / (
+    #     metrics["TP"] + 0.5 * (metrics["FP"] + metrics["FN"])
+    # )
+    metrics["P_change"] = metrics["TP"] / (metrics["TP"] + metrics["FP"])
+    metrics["P_no_change"] = metrics["TN"] / (metrics["TN"] + metrics["FN"])
+    metrics["R_change"] = metrics["TP"] / (metrics["TP"] + metrics["FN"])
+    metrics["R_no_change"] = metrics["TN"] / (metrics["TN"] + metrics["FP"])                
+    metrics["FAR"] = metrics["FP"] / (metrics["TN"] + metrics["FP"])
     timestamp = cd.timestamp
     epoch = cd.epoch.numpy()
-    return metrics, epoch, training_time, timestamp
+    speed = (epoch, training_time, timestamp)
+    return metrics, speed
 
 
 if __name__ == "__main__":
-    print(test("E_R"))
-    # test("California")
+    JUST_ONE=False
+    N = 5
+    print_metrics = ['AUC', 'ACC', 'Kappa', 'P_change', 'P_no_change', 'R_change', 'R_no_change', 'FAR']
+    channels_list = [1, 2, 3, 4, 5, 8, 10, 15]
+    
+    
+    if JUST_ONE:
+        print(test("E_R2"))
+    else:
+
+        print("reminder to set save_images=False")
+        for channels_y in channels_list:
+
+            print_string = ''
+            
+            with open('SCCN_kPCA_linear_results.txt', 'a') as f:
+                f.write(f"Channels_y: {channels_y} --------------------------\n")
+            
+            metrics_list = []
+
+            for i in range(N):
+                metrics_list.append([])
+                metrics, _ = test("E_R2")
+                metrics_list[-1].append(np.fromiter(metrics.values(), dtype=np.float32))
+
+            metrics_array = np.array(metrics_list)
+            mean = np.mean(metrics_array, axis=0)
+            std = np.std(metrics_array, axis=0)
+        
+            for idx, metric_name in enumerate(metrics.keys()):
+                if metric_name not in print_metrics:
+                    continue
+                # print(f"{metric_name}: {mean[idx]} +/- {std[idx]}")
+                print_string += f"{mean[0,idx]} {std[0,idx]} "
+
+            print_string += '\n'
+
+            # write print_string to the end of results.txt file
+            with open('SCCN_kPCA_linear_results.txt', 'a') as f:
+                f.write(print_string)
+
+        print('Results:\n')
+        print(print_string)
+

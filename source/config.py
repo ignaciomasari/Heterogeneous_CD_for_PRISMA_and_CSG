@@ -2,7 +2,6 @@ from filtering import decorated_median_filter, decorated_gaussian_filter
 import tensorflow as tf
 from datetime import datetime
 
-
 def get_config(dataset_name, debug=False):
     CONFIG = {
         "debug": debug,  # debugging flag
@@ -12,8 +11,8 @@ def get_config(dataset_name, debug=False):
         "save_images": False,  # bool, wheter to store images after training
         "channel_x": [1, 2, 3],
         "channel_y": [1, 2, 3],
-        "n_channels_y":5,
-        "reduction_method":"UMAP",
+        "n_channels_y":2,
+        "reduction_method":"kPCA_linear",
         "filter_": decorated_median_filter("z_median_filtered_diff"),
         "final_filter": decorated_gaussian_filter("z_gaussian_filtered_diff", sd_gauss=2, compat_gauss=3, sd_bilateral=3, schan_bilateral=1, compat_bilateral=2),
         "patience": 10,  # epochs after which training stops if kernel loss does not improve much
@@ -27,9 +26,9 @@ def get_config(dataset_name, debug=False):
                 + datetime.now().strftime("%Y%m%d-%H%M%S"),
                 "list_epochs": [50, 50, 50, 50],  # number of training epochs
                 "batches": 10,  # number of batches per epoch
-                "batch_size": 10,  # number of samples per batch
+                "batch_size": 5,  # number of samples per batch
                 "patch_size": 100,  # size of patches extracted for training
-                "affinity_batch_size": 100,  # batch size for prior computation
+                "affinity_batch_size": 50,  # batch size for prior computation
                 "affinity_patch_size": 20,  # patch size for prior computation
                 "affinity_stride": 5,  # stride for prior computation
             }

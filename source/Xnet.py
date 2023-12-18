@@ -235,12 +235,12 @@ def test(DATASET="Texas", CONFIG=None):
         except Exception as exc:
             print(exc)
             print("Prior under evaluation")
-            alpha = eval_prior(DATASET, np.array(x_im[0], dtype=np.float32), np.array(y_im[0], dtype=np.float32))
+            alpha = eval_prior(DATASET, np.array(x_im[0], dtype=np.float32), np.array(y_im[0], dtype=np.float32), **CONFIG)
             np.save(alpha_path, alpha)
             alpha = tf.expand_dims(alpha, 0)
     else:
         print("Prior under evaluation")
-        alpha = eval_prior(DATASET, np.array(x_im[0], dtype=np.float32), np.array(y_im[0], dtype=np.float32))
+        alpha = eval_prior(DATASET, np.array(x_im[0], dtype=np.float32), np.array(y_im[0], dtype=np.float32), **CONFIG)
         np.save(alpha_path, alpha)
         alpha = tf.expand_dims(alpha, 0)
  
@@ -259,7 +259,7 @@ def test(DATASET="Texas", CONFIG=None):
 
         if CONFIG['UPDATE_ALPHA']:
             for x, y, _ in EVALUATE.batch(1):
-                alpha = eval_prior(DATASET, np.array(x[0], dtype=np.float32), np.array(y[0], dtype=np.float32))    
+                alpha = eval_prior(DATASET, np.array(x[0], dtype=np.float32), np.array(y[0], dtype=np.float32), **CONFIG)    
             non_change_prob = 1.0 - alpha
 
         training_time += tr_time
