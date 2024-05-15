@@ -47,6 +47,10 @@ def write_image_to_png(image, filename):
     contents = tf.image.encode_png(image)
     tf.io.write_file(filename, contents)
 
+def write_image_to_tensor(image, filename):    
+    serialized_tensor = tf.io.serialize_tensor(image)
+    tf.io.write_file(filename, serialized_tensor)
+
 
 def image_to_tensorboard(static_name=None, pre_process=None):
     """
@@ -83,18 +87,21 @@ def image_to_tensorboard(static_name=None, pre_process=None):
                 )
             else:
                 tmp2 = tmp
-            if (
-                name is not None
-                and self.evaluation_frequency > 0
-                and not tf.cast(
-                    tf.summary.experimental.get_step() % self.evaluation_frequency,
-                    dtype=tf.bool,
-                )
-            ) or self._save_images:
+            # if (
+            #     name is not None
+            #     and self.evaluation_frequency > 0
+            #     and not tf.cast(
+            #         tf.summary.experimental.get_step() % self.evaluation_frequency,
+            #         dtype=tf.bool,
+            #     )
+            # ) or self._save_images:
+            if self._save_images:
                 write_image_to_summary(tmp2, self.tb_writer, name, pre_process)
             if self._save_images and name is not None:
-                filename = self._image_dir + tf.constant(f"/{name}.png")
-                write_image_to_png(tmp2, filename)
+                # filename = self._image_dir + tf.constant(f"/{name}.png")
+                # write_image_to_png(tmp2, filename)
+                filename = self._image_dir + tf.constant(f"/{name}.tensor")
+                write_image_to_tensor(tmp, filename)
             return out
 
         return wrapper

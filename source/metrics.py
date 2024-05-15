@@ -1,11 +1,8 @@
 import numpy as np
 import tensorflow.keras.backend as K
 from tensorflow.keras.metrics import Metric
-from tensorflow_addons.utils import keras_utils
 import tensorflow as tf
 
-
-@keras_utils.register_keras_custom_object
 class CohenKappa(Metric):
     """Computes Kappa score between two raters.
     The score lies in the range [-1, 1]. A score of -1 represents

@@ -174,7 +174,7 @@ class SCCN(ChangeDetector):
         tf.print("Pretrain done")
 
 
-def test(DATASET="Texas", CONFIG=None, n_ch_y=None):
+def test(DATASET="Texas", CONFIG=None, n_ch_y=None, reduction_method=None):
     """
     1. Fetch data (x, y, change_map)
     2. Compute/estimate A_x and A_y (for patches)
@@ -189,9 +189,11 @@ def test(DATASET="Texas", CONFIG=None, n_ch_y=None):
     if CONFIG is None:
         CONFIG = get_config_SCCN(DATASET)
 
-    #update number of channels to n_ch_y
     if n_ch_y is not None:
         CONFIG.update({"n_channels_y":n_ch_y})
+
+    if reduction_method is not None:
+        CONFIG.update({"reduction_method":reduction_method})
 
     x_im, y_im, EVALUATE, (C_X, C_Y) = datasets.fetch(DATASET, **CONFIG)
     if tf.config.list_physical_devices('GPU') is not None and not CONFIG["debug"]:
@@ -252,18 +254,22 @@ def test(DATASET="Texas", CONFIG=None, n_ch_y=None):
     timestamp = cd.timestamp
     epoch = cd.epoch.numpy()
     speed = (epoch, training_time, timestamp)
+    gc.collect()
     return metrics, speed
 
 
 if __name__ == "__main__":
     JUST_ONE=False
     N = 5
+    DATASET = "Bolsena_30m"
     print_metrics = ['AUC', 'ACC', 'Kappa', 'P_change', 'P_no_change', 'R_change', 'R_no_change', 'FAR']
     channels_list = [1, 2, 3, 4, 5, 8, 10, 15]
+    # channels_list = [8, 10]
+    reduction_method = 'UMAP'
     
     
     if JUST_ONE:
-        print(test("E_R2"))
+        print(test(DATASET))
     else:
 
         print("reminder to set save_images=False")
@@ -271,14 +277,15 @@ if __name__ == "__main__":
 
             print_string = ''
             
-            with open('SCCN_kPCA_linear_results.txt', 'a') as f:
+            with open(f'logs/{DATASET}/SCCN_{reduction_method}_results.txt', 'a') as f:
                 f.write(f"Channels_y: {channels_y} --------------------------\n")
             
             metrics_list = []
 
             for i in range(N):
                 metrics_list.append([])
-                metrics, _ = test("E_R2")
+                tf.keras.backend.clear_session()
+                metrics, _ = test(DATASET, n_ch_y=channels_y, reduction_method=reduction_method)
                 metrics_list[-1].append(np.fromiter(metrics.values(), dtype=np.float32))
 
             metrics_array = np.array(metrics_list)
@@ -294,7 +301,7 @@ if __name__ == "__main__":
             print_string += '\n'
 
             # write print_string to the end of results.txt file
-            with open('SCCN_kPCA_linear_results.txt', 'a') as f:
+            with open(f'logs/{DATASET}/SCCN_{reduction_method}_results.txt', 'a') as f:
                 f.write(print_string)
 
         print('Results:\n')

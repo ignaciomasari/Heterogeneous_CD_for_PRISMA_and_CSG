@@ -7,7 +7,7 @@ from tqdm import trange
 
 from filtering import threshold_otsu
 from decorators import image_to_tensorboard, timed
-from tensorflow_addons.metrics import CohenKappa
+from metrics import CohenKappa
 from config import get_config
 import datasets
 import numpy as np
@@ -102,13 +102,16 @@ class ChangeDetector:
         return tf.expand_dims(d / tf.reduce_max(d), -1)
 
     # @tf.function
-    def _difference_img(self, x, y, x_hat, y_hat):
+    def _difference_img(self, x, y, x_hat=None, y_hat=None):
         """
         Should compute the two possible change maps and do the 5 method
         ensamble to output a final change-map?
         """
         assert x.shape[0] == y.shape[0] == 1, "Can not handle batch size > 1"
 
+        if (x_hat is None) and (y_hat is None):
+            return self._domain_difference_img(x, y, name="xy_diff")
+            
         d_x = self._domain_difference_img(x, x_hat, name="x_ut_diff")
         d_y = self._domain_difference_img(y, y_hat, name="y_ut_diff")
 

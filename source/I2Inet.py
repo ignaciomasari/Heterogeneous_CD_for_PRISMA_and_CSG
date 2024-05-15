@@ -13,7 +13,7 @@ from config import get_config_Xnet
 from decorators import image_to_tensorboard
 import numpy as np
 
-class XNet(ChangeDetector):
+class I2INet(ChangeDetector):
     def __init__(self, translation_spec, **kwargs):
         """
                 Input:
@@ -36,7 +36,7 @@ class XNet(ChangeDetector):
         super().__init__(**kwargs)
 
         self.W_TRAN = kwargs.get("W_TRAN", 1)
-        self.W_CYCLE = kwargs.get("W_CYCLE", 1)
+        # self.W_CYCLE = kwargs.get("W_CYCLE", 1)
         self.l2_lambda = kwargs.get("W_REG", 0.01)
         self.min_impr = kwargs.get("minimum improvement", 1e-3)
         self.patience = kwargs.get("patience", 10)
@@ -47,16 +47,16 @@ class XNet(ChangeDetector):
             **translation_spec["X_to_Y"], name="X_to_Y", l2_lambda=self.l2_lambda
         )
 
-        # encoder from Y to X
-        self._Y_to_X = WeightedTranslationNetwork(
-            **translation_spec["Y_to_X"], name="Y_to_X", l2_lambda=self.l2_lambda
-        )
+        # # encoder from Y to X
+        # self._Y_to_X = WeightedTranslationNetwork(
+        #     **translation_spec["Y_to_X"], name="Y_to_X", l2_lambda=self.l2_lambda
+        # )
 
         self.loss_object = tf.keras.losses.MeanSquaredError()
 
-        self.train_metrics["cycle_x"] = tf.keras.metrics.Sum(name="cycle_x MSE sum")
-        self.train_metrics["alpha_x"] = tf.keras.metrics.Sum(name="alpha_x MSE sum")
-        self.train_metrics["cycle_y"] = tf.keras.metrics.Sum(name="cycle_y MSE sum")
+        # self.train_metrics["cycle_x"] = tf.keras.metrics.Sum(name="cycle_x MSE sum")
+        # self.train_metrics["alpha_x"] = tf.keras.metrics.Sum(name="alpha_x MSE sum")
+        # self.train_metrics["cycle_y"] = tf.keras.metrics.Sum(name="cycle_y MSE sum")
         self.train_metrics["alpha_y"] = tf.keras.metrics.Sum(name="alpha_y MSE sum")
         self.train_metrics["l2"] = tf.keras.metrics.Sum(name="l2 MSE sum")
         self.train_metrics["total"] = tf.keras.metrics.Sum(name="total MSE sum")
@@ -66,11 +66,11 @@ class XNet(ChangeDetector):
 
     def save_all_weights(self):
         self._X_to_Y.save_weights(self.log_path + "/weights/_X_to_Y/")
-        self._Y_to_X.save_weights(self.log_path + "/weights/_Y_to_X/")
+        # self._Y_to_X.save_weights(self.log_path + "/weights/_Y_to_X/")
 
     def load_all_weights(self, folder):
         self._X_to_Y.load_weights(folder + "/weights/_X_to_Y/")
-        self._Y_to_X.load_weights(folder + "/weights/_Y_to_X/")
+        # self._Y_to_X.load_weights(folder + "/weights/_Y_to_X/")
 
     @image_to_tensorboard()
     def X_to_Y(self, inputs, training=False):
@@ -113,13 +113,12 @@ class XNet(ChangeDetector):
         tf.debugging.Assert(tf.rank(y) == 4, [y.shape])
 
         if training:
-            x_hat, y_hat = self._Y_to_X(y, training), self._X_to_Y(x, training)
-            x_dot, y_dot = self._Y_to_X(y_hat, training), self._X_to_Y(x_hat, training)
-            retval = [x_hat, y_hat, x_dot, y_dot]
+            y_hat = self._X_to_Y(x, training)
+            retval = y_hat
 
         else:
-            x_hat, y_hat = self.Y_to_X(y, name="x_hat"), self.X_to_Y(x, name="y_hat")
-            difference_img = self._difference_img(x, y, x_hat, y_hat)
+            y_hat = self.X_to_Y(x, name="y_hat")
+            difference_img = self._difference_img(y, y_hat)
             retval = difference_img
 
         return retval
@@ -133,30 +132,33 @@ class XNet(ChangeDetector):
         aff - affinity, tensor of shape (bs, ps_h, ps_w, 1)
         """
         with tf.GradientTape() as tape:
-            x_hat, y_hat, x_dot, y_dot = self(
+            y_hat = self(
                 [x, y], training=True
             )            
-            l2_loss = (
-                sum(self._X_to_Y.losses)
-                + sum(self._Y_to_X.losses)
-            )
-            cycle_x_loss = self.W_CYCLE * self.loss_object(x, x_dot)
-            cycle_y_loss = self.W_CYCLE * self.loss_object(y, y_dot)
-            alpha_x_loss = self.W_TRAN * self.loss_object(x, x_hat, non_change_prob)
+            # l2_loss = (
+            #     sum(self._X_to_Y.losses)
+            #     # + sum(self._Y_to_X.losses)
+            # )
+            l2_loss = sum(self._X_to_Y.losses)
+            # cycle_x_loss = self.W_CYCLE * self.loss_object(x, x_dot)
+            # cycle_y_loss = self.W_CYCLE * self.loss_object(y, y_dot)
+            # alpha_x_loss = self.W_TRAN * self.loss_object(x, x_hat, non_change_prob)
             alpha_y_loss = self.W_TRAN * self.loss_object(y, y_hat, non_change_prob)                        
 
             total_loss = (
-                cycle_x_loss
-                + cycle_y_loss
-                + alpha_x_loss
-                + alpha_y_loss
+                # cycle_x_loss
+                # + cycle_y_loss
+                # + alpha_x_loss
+                alpha_y_loss
                 + l2_loss
             )
 
-            targets_all = (
-                self._X_to_Y.trainable_variables
-                + self._Y_to_X.trainable_variables
-            )
+            # targets_all = (
+            #     self._X_to_Y.trainable_variables
+            #     # + self._Y_to_X.trainable_variables
+            # )
+
+            targets_all = self._X_to_Y.trainable_variables
 
             gradients_all = tape.gradient(total_loss, targets_all)
 
@@ -164,9 +166,9 @@ class XNet(ChangeDetector):
                 gradients_all, _ = tf.clip_by_global_norm(gradients_all, self.clipnorm)
             self._optimizer_all.apply_gradients(zip(gradients_all, targets_all))
 
-        self.train_metrics["cycle_x"].update_state(cycle_x_loss)
-        self.train_metrics["alpha_x"].update_state(alpha_x_loss)
-        self.train_metrics["cycle_y"].update_state(cycle_y_loss)
+        # self.train_metrics["cycle_x"].update_state(cycle_x_loss)
+        # self.train_metrics["alpha_x"].update_state(alpha_x_loss)
+        # self.train_metrics["cycle_y"].update_state(cycle_y_loss)
         self.train_metrics["alpha_y"].update_state(alpha_y_loss)
         self.train_metrics["l2"].update_state(l2_loss)
         self.train_metrics["total"].update_state(total_loss)
@@ -227,7 +229,7 @@ def test(DATASET="Texas", CONFIG=None, n_ch_y=None, reduction_method=None):
         }
 
     print("Change Detector Init")
-    cd = XNet(NETWORK_SPEC, **CONFIG)
+    cd = I2INet(NETWORK_SPEC, **CONFIG)
 
     n_channels_y = CONFIG["n_channels_y"]
     reduction_method = CONFIG["reduction_method"]
@@ -296,11 +298,11 @@ def test(DATASET="Texas", CONFIG=None, n_ch_y=None, reduction_method=None):
 if __name__ == "__main__":
     JUST_ONE=False
     N = 5
-    DATASET = "LUCCA"
+    DATASET = "Bolsena_30m"
     print_metrics = ['AUC', 'ACC', 'Kappa', 'P_change', 'P_no_change', 'R_change', 'R_no_change', 'FAR']
     # channels_list = [1, 2, 3, 4, 5, 8, 10, 15]
-    channels_list = [2]
-    reduction_method = 'UMAP'
+    channels_list = [8]
+    reduction_method = 'kPCA_rbf'
     
     
     if JUST_ONE:
@@ -312,7 +314,7 @@ if __name__ == "__main__":
 
             print_string = ''
             
-            with open(f'logs/{DATASET}/XNet_{reduction_method}_results.txt', 'a') as f:
+            with open(f'logs/{DATASET}/I2INet_{reduction_method}_results.txt', 'a') as f:
                 f.write(f"Channels_y: {channels_y} --------------------------\n")
             
             metrics_list = []
@@ -336,7 +338,7 @@ if __name__ == "__main__":
             print_string += '\n'
 
             # write print_string to the end of results.txt file
-            with open(f'logs/{DATASET}/XNet_{reduction_method}_results.txt', 'a') as f:
+            with open(f'logs/{DATASET}/I2INet_{reduction_method}_results.txt', 'a') as f:
                 f.write(print_string)
 
         print('Results:\n')

@@ -1,5 +1,5 @@
 import tensorflow as tf
-import tensorflow_addons as tfa
+# import tensorflow_addons as tfa
 from decorators import image_to_tensorboard
 import pydensecrf.densecrf as dcrf
 from pydensecrf.utils import create_pairwise_bilateral
@@ -7,7 +7,7 @@ from pydensecrf.utils import create_pairwise_gaussian
 import numpy as np
 
 
-@tf.function
+@tf.function(reduce_retracing=True)
 def threshold_otsu(image):
     """Return threshold value based on Otsu's method. Adapted to tf from sklearn
     Parameters
@@ -145,22 +145,50 @@ def histogram_equalization(image):
     eq_hist = tf.expand_dims(tf.gather_nd(px_map, tf.cast(image, tf.int32)), 2)
     return eq_hist
 
+# def decorated_median_filter(static_name, pre_process=histogram_equalization, **kwargs):
+#     """
+#         Wrap a tfa median filter with TensorBoard decorator and specify arguments
+#         Input:
+#             model - ChangeDetector, the model the filter is used with
+#             static_name - str, passed to decorators.image_to_tensorboard()
+#             pre_process - callable, passed to decorators.image_to_tensorboard()
+#             **kwargs - passed to tfa.image.median_filter2d
+#         Output:
+#             callable - takes input image as tfa.image.median_filter2d
+#     """
+
+#     @image_to_tensorboard(static_name=static_name)  # , pre_process=pre_process)
+#     def median_filter2d(self, x, y, difference_img):
+#         return tfa.image.median_filter2d(difference_img, **kwargs)
+
+#     return median_filter2d
 
 def decorated_median_filter(static_name, pre_process=histogram_equalization, **kwargs):
     """
-        Wrap a tfa median filter with TensorBoard decorator and specify arguments
+        Wrap a median filter with TensorBoard decorator and specify arguments
         Input:
             model - ChangeDetector, the model the filter is used with
             static_name - str, passed to decorators.image_to_tensorboard()
             pre_process - callable, passed to decorators.image_to_tensorboard()
-            **kwargs - passed to tfa.image.median_filter2d
+            **kwargs - passed to median_filter2d
         Output:
-            callable - takes input image as tfa.image.median_filter2d
+            callable - takes input image as median_filter2d
     """
 
     @image_to_tensorboard(static_name=static_name)  # , pre_process=pre_process)
-    def median_filter2d(self, x, y, difference_img):
-        return tfa.image.median_filter2d(difference_img, **kwargs)
+    def median_filter2d(self, x, y, difference_img, kernel_size=3):
+        batch_size, height, width, channels = tf.unstack(tf.shape(difference_img))
+        patches = tf.image.extract_patches(
+            images=difference_img,
+            sizes=[1, kernel_size, kernel_size, 1],
+            strides=[1, 1, 1, 1],
+            rates=[1, 1, 1, 1],
+            padding='SAME'
+        )
+        patches = tf.reshape(patches, [batch_size, -1, kernel_size * kernel_size * channels])
+        medians = tf.math.top_k(patches, k=kernel_size * kernel_size // 2 + 1)[0][..., -1]
+        medians = tf.reshape(medians, [batch_size, height, width, channels])
+        return medians
 
     return median_filter2d
 
