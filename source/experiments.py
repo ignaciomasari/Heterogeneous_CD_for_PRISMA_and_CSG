@@ -13,7 +13,6 @@ import tensorflow as tf
 
 tf.config.experimental.set_memory_growth(tf.config.list_physical_devices('GPU')[0], True)
 
-import datasets
 from config import *
 import shelve
 import numpy as np
@@ -29,6 +28,7 @@ MODELS = {"Kern_AceNet": test_kACE,
           "Xnet": test_Xnet,
           "I2INet": test_I2Inet,
           "I2INet2": test_I2Inet2}
+
 CONFIG_FUNS = {"Kern_AceNet": get_config_kACE,
                "SCCN": get_config_SCCN,
                "Xnet": get_config_Xnet,
@@ -44,7 +44,6 @@ NAMES = {
     "lambda_k=.01": {"kernels_lambda": 0.01},
     "lambda_k=0.5": {"kernels_lambda": 0.5},
 }
-
 
 def models_run(models, runs, dataset, logdir, shelve_path, debug):
     for name, test in models.items():
@@ -160,48 +159,46 @@ def experiment(DATASETS=["Texas"]):
         with open(LOGDIR + "metrics.csv", "x") as FILE:
             DF.to_csv(FILE, index_label=["model", "timestamp"])
 
-def models_run_save_file(DATASET, N, print_metrics, channels_list, model, reduction_method):
+def models_run_save_file(DATASET, N, print_metrics, channels_y, model, reduction_method):
     
     test = MODELS[model]
 
-    for channels_y in channels_list:
-
-        print_string = ''
-        
-        with open(f'./logs/{DATASET}/{model}_{reduction_method}_results.txt', 'a') as f:
-            f.write(f"Channels_y: {channels_y} --------------------------\n")
-        
-        metrics_list = []
-
-        config = CONFIG_FUNS[model](DATASET)
-        # config.update(save_images=False)
-        # config.update(evaluation_frequency=0)
-        config.update(n_channels_y=channels_y)
-        config.update(reduction_method=reduction_method)
-        logdir = config["logdir"] + f"_{model}_{reduction_method}_{channels_y}"
-
-        for run in range(N):
-            config.update(logdir=os.path.join(logdir,str(run + 1)))
-            metrics_list.append([])
-            tf.keras.backend.clear_session()
-            metrics, _ = test(DATASET, CONFIG=config)
-            metrics_list[-1].append(np.fromiter(metrics.values(), dtype=np.float32))
-
-        metrics_array = np.array(metrics_list)
-        mean = np.mean(metrics_array, axis=0)
-        std = np.std(metrics_array, axis=0)
+    print_string = ''
     
-        for idx, metric_name in enumerate(metrics.keys()):
-            if metric_name not in print_metrics:
-                continue
-            # print(f"{metric_name}: {mean[idx]} +/- {std[idx]}")
-            print_string += f"{mean[0,idx]} {std[0,idx]} "
+    with open(f'./logs/{DATASET}/{model}_{reduction_method}_results.txt', 'a') as f:
+        f.write(f"Channels_y: {channels_y} --------------------------\n")
+    
+    metrics_list = []
 
-        print_string += '\n'
+    config = CONFIG_FUNS[model](DATASET)
+    config.update(n_channels_y=channels_y)
+    config.update(reduction_method=reduction_method)
+    logdir = config["logdir"] + f"_{model}_{reduction_method}_{channels_y}"
 
-        # write print_string to the end of results.txt file
-        with open(f'./logs/{DATASET}/{model}_{reduction_method}_results.txt', 'a') as f:
-            f.write(print_string)
+    for run in range(N):
+        config.update(logdir=os.path.join(logdir,str(run + 1)))
+        metrics_list.append([])
+
+        tf.keras.backend.clear_session()
+        gc.collect()
+
+        metrics, _ = test(DATASET, CONFIG=config)
+        metrics_list[-1].append(np.fromiter(metrics.values(), dtype=np.float32))
+
+    metrics_array = np.array(metrics_list)
+    mean = np.mean(metrics_array, axis=0)
+    std = np.std(metrics_array, axis=0)
+
+    for idx, metric_name in enumerate(metrics.keys()):
+        if metric_name not in print_metrics:
+            continue
+        print_string += f"{mean[0,idx]} {std[0,idx]} "
+
+    print_string += '\n'
+
+    # write print_string to the end of results.txt file
+    with open(f'./logs/{DATASET}/{model}_{reduction_method}_results.txt', 'a') as f:
+        f.write(print_string)
 
 
 
@@ -209,18 +206,15 @@ if __name__ == "__main__":
     DATASET = "E_R2" #"Bolsena30m", "E_R2", "LUCCA"
     N = 5
     print_metrics = ['AUC', 'ACC', 'Kappa', 'P_change', 'P_no_change', 'R_change', 'R_no_change', 'FAR']
-    # channels_list = [10]
-    channels_list = [1,2,3,4,5,8,10,15,20,30,40]
-    reduction_methods = [ 'kPCA_linear']
-    # reduction_methods = ['kPCA_poly']
-    # reduction_methods = ['kPCA_rbf']
-    # reduction_methods = ['kPCA_linear']
-    # reduction_methods = ['UMAP']
-
-    for reduction_method in reduction_methods:
-        models_run_save_file(DATASET, N, print_metrics, channels_list, 'I2INet2', reduction_method)
-        # models_run_save_file(DATASET, N, print_metrics, channels_list, 'I2INet', reduction_method)
-        # models_run_save_file(DATASET, N, print_metrics, channels_list, 'SCCN', reduction_method)
-        # models_run_save_file(DATASET, N, print_metrics, channels_list, 'Kern_AceNet', reduction_method)
-        # models_run_save_file(DATASET, N, print_metrics, channels_list, 'Xnet', reduction_method)
     
+    channels_list = [1, 2, 3]
+    reduction_methods = ['kPCA_linear', 'UMAP']#, 'kPCA_poly', 'kPCA_rbf']
+    
+    for reduction_method in reduction_methods:
+        for channels_y in channels_list:
+            
+            models_run_save_file(DATASET, N, print_metrics, channels_y, 'I2INet2', reduction_method)
+            models_run_save_file(DATASET, N, print_metrics, channels_y, 'Xnet', reduction_method)
+            models_run_save_file(DATASET, N, print_metrics, channels_y, 'I2INet', reduction_method)
+            models_run_save_file(DATASET, N, print_metrics, channels_y, 'Kern_AceNet', reduction_method)
+            models_run_save_file(DATASET, N, print_metrics, channels_y, 'SCCN', reduction_method)

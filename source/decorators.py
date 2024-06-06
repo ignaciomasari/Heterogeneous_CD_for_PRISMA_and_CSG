@@ -2,7 +2,6 @@ import tensorflow as tf
 from functools import wraps
 from timeit import default_timer as timer
 
-
 def timed(func):
     """ Times function call """
 
@@ -16,13 +15,11 @@ def timed(func):
 
     return wrapper
 
-
 def _change_image_range(tensor):
     """ Take image to [0, 1] """
     return (tensor - tf.reduce_min(tensor)) / (
         tf.reduce_max(tensor) - tf.reduce_min(tensor)
     )
-
 
 def write_image_to_summary(image, writer, name, pre_process=None):
     if image.dtype == tf.bool:
@@ -37,7 +34,6 @@ def write_image_to_summary(image, writer, name, pre_process=None):
         with writer.as_default():
             tf.summary.image(name, image)
 
-
 def write_image_to_png(image, filename):
     """ Write [0, 1] image to png file """
     if tf.rank(image) == 4:
@@ -50,7 +46,6 @@ def write_image_to_png(image, filename):
 def write_image_to_tensor(image, filename):    
     serialized_tensor = tf.io.serialize_tensor(image)
     tf.io.write_file(filename, serialized_tensor)
-
 
 def image_to_tensorboard(static_name=None, pre_process=None):
     """
@@ -98,8 +93,6 @@ def image_to_tensorboard(static_name=None, pre_process=None):
             if self._save_images:
                 write_image_to_summary(tmp2, self.tb_writer, name, pre_process)
             if self._save_images and name is not None:
-                # filename = self._image_dir + tf.constant(f"/{name}.png")
-                # write_image_to_png(tmp2, filename)
                 filename = self._image_dir + tf.constant(f"/{name}.tensor")
                 write_image_to_tensor(tmp, filename)
             return out

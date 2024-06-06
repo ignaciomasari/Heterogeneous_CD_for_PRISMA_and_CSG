@@ -1,5 +1,4 @@
 import os
-import gc
 
 # Set loglevel to suppress tensorflow GPU messages
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
@@ -17,26 +16,23 @@ class I2INet(ChangeDetector):
     def __init__(self, translation_spec, **kwargs):
         """
                 Input:
-                    translation_spec - dict with keys 'enc_X', 'enc_Y', 'dec_X', 'dec_Y'.
-                                       Values are passed as kwargs to the
-                                       respective ImageTranslationNetwork's
-                    cycle_lambda=2 - float, loss weight
-                    cross_lambda=1 - float, loss weight
-                    l2_lambda=1e-3 - float, loss weight
-                    kernels_lambda - float, loss weight
-                    learning_rate=1e-5 - float, initial learning rate for
+                    translation_spec - dict with keys 'X_to_Y'.
+
+                    Values passed as kwargs:
+                    W_TRAN=3 - float, loss weight
+                    W_REG=1e-3 - float, loss weight
+                    learning_rate=1e-4 - float, initial learning rate for
                                          ExponentialDecay
-                    clipnorm=None - gradient norm clip value, passed to
+                    clipnorm=1 - gradient norm clip value, passed to
                                     tf.clip_by_global_norm if not None
-                    logdir=None - path to log directory. If provided, tensorboard
-                                  logging of training and evaluation is set up at
-                                  'logdir/timestamp/' + 'train' and 'evaluation'
+                    logdir=./logs/{dataset_name}/ - path to log directory. If provided, tensorboard
+                                                    logging of training and evaluation is set up at
+                                                    'logdir/timestamp/' + 'train' and 'evaluation'
         """
 
         super().__init__(**kwargs)
 
-        self.W_TRAN = kwargs.get("W_TRAN", 1)
-        # self.W_CYCLE = kwargs.get("W_CYCLE", 1)
+        self.W_TRAN = kwargs.get("W_TRAN", 1)    
         self.l2_lambda = kwargs.get("W_REG", 0.01)
         self.min_impr = kwargs.get("minimum improvement", 1e-3)
         self.patience = kwargs.get("patience", 10)
@@ -47,16 +43,8 @@ class I2INet(ChangeDetector):
             **translation_spec["X_to_Y"], name="X_to_Y", l2_lambda=self.l2_lambda
         )
 
-        # # encoder from Y to X
-        # self._Y_to_X = WeightedTranslationNetwork(
-        #     **translation_spec["Y_to_X"], name="Y_to_X", l2_lambda=self.l2_lambda
-        # )
-
         self.loss_object = tf.keras.losses.MeanSquaredError()
 
-        # self.train_metrics["cycle_x"] = tf.keras.metrics.Sum(name="cycle_x MSE sum")
-        # self.train_metrics["alpha_x"] = tf.keras.metrics.Sum(name="alpha_x MSE sum")
-        # self.train_metrics["cycle_y"] = tf.keras.metrics.Sum(name="cycle_y MSE sum")
         self.train_metrics["alpha_y"] = tf.keras.metrics.Sum(name="alpha_y MSE sum")
         self.train_metrics["l2"] = tf.keras.metrics.Sum(name="l2 MSE sum")
         self.train_metrics["total"] = tf.keras.metrics.Sum(name="total MSE sum")
@@ -66,20 +54,14 @@ class I2INet(ChangeDetector):
 
     def save_all_weights(self):
         self._X_to_Y.save_weights(self.log_path + "/weights/_X_to_Y/")
-        # self._Y_to_X.save_weights(self.log_path + "/weights/_Y_to_X/")
-
+        
     def load_all_weights(self, folder):
         self._X_to_Y.load_weights(folder + "/weights/_X_to_Y/")
-        # self._Y_to_X.load_weights(folder + "/weights/_Y_to_X/")
-
+        
     @image_to_tensorboard()
     def X_to_Y(self, inputs, training=False):
         """ Wraps encoder call for TensorBoard printing and image save """
         return self._X_to_Y(inputs, training)
-
-    @image_to_tensorboard()
-    def Y_to_X(self, inputs, training=False):
-        return self._Y_to_X(inputs, training)
 
     def early_stopping_criterion(self):
         temp = tf.math.reduce_min([self.stopping, self.patience]) + 1
@@ -135,40 +117,22 @@ class I2INet(ChangeDetector):
             y_hat = self(
                 [x, y], training=True
             )            
-            # l2_loss = (
-            #     sum(self._X_to_Y.losses)
-            #     # + sum(self._Y_to_X.losses)
-            # )
+
             l2_loss = sum(self._X_to_Y.losses)
-            # cycle_x_loss = self.W_CYCLE * self.loss_object(x, x_dot)
-            # cycle_y_loss = self.W_CYCLE * self.loss_object(y, y_dot)
-            # alpha_x_loss = self.W_TRAN * self.loss_object(x, x_hat, non_change_prob)
             alpha_y_loss = self.W_TRAN * self.loss_object(y, y_hat, non_change_prob)                        
 
             total_loss = (
-                # cycle_x_loss
-                # + cycle_y_loss
-                # + alpha_x_loss
                 alpha_y_loss
                 + l2_loss
             )
 
-            # targets_all = (
-            #     self._X_to_Y.trainable_variables
-            #     # + self._Y_to_X.trainable_variables
-            # )
-
             targets_all = self._X_to_Y.trainable_variables
-
             gradients_all = tape.gradient(total_loss, targets_all)
 
             if self.clipnorm is not None:
                 gradients_all, _ = tf.clip_by_global_norm(gradients_all, self.clipnorm)
             self._optimizer_all.apply_gradients(zip(gradients_all, targets_all))
 
-        # self.train_metrics["cycle_x"].update_state(cycle_x_loss)
-        # self.train_metrics["alpha_x"].update_state(alpha_x_loss)
-        # self.train_metrics["cycle_y"].update_state(cycle_y_loss)
         self.train_metrics["alpha_y"].update_state(alpha_y_loss)
         self.train_metrics["l2"].update_state(l2_loss)
         self.train_metrics["total"].update_state(total_loss)
@@ -205,27 +169,20 @@ def test(DATASET="Texas", CONFIG=None, n_ch_y=None, reduction_method=None):
         FS2 = 3
         FS3 = 3
         FS4 = 3
-        print("here")
+        print("working with GPU")
         NETWORK_SPEC = {
             "X_to_Y": {"input_chs": C_X, "filter_spec": [
                                                             [C_X, NF1, FS1, 1],
                                                             [NF1, NF2, FS2, 1],
                                                             [NF2, NF3, FS3, 1],
                                                             [NF3, C_Y, FS4, 1],
-                                                        ]},
-            "Y_to_X": {"input_chs": C_Y, "filter_spec": [
-                                                            [C_Y, NF1, FS1, 1],
-                                                            [NF1, NF2, FS2, 1],
-                                                            [NF2, NF3, FS3, 1],
-                                                            [NF3, C_X, FS4, 1],
-                                                        ]},
+                                                        ]},            
         }
     else:
-        print("why here?")
+        print("working with CPU")
         FS1 = 3
         NETWORK_SPEC = {
             "X_to_Y": {"input_chs": C_X, "filter_spec": [C_X, C_Y, FS1, 1]},
-            "Y_to_X": {"input_chs": C_Y, "filter_spec": [C_Y, C_X, FS1, 1]},
         }
 
     print("Change Detector Init")
@@ -280,9 +237,7 @@ def test(DATASET="Texas", CONFIG=None, n_ch_y=None, reduction_method=None):
         cd.change_map_metrics.keys()
     ):
         metrics[key] = cd.metrics_history[key][-1]
-    # metrics["F1"] = metrics["TP"] / (
-    #     metrics["TP"] + 0.5 * (metrics["FP"] + metrics["FN"])
-    # )
+
     metrics["P_change"] = metrics["TP"] / (metrics["TP"] + metrics["FP"])
     metrics["P_no_change"] = metrics["TN"] / (metrics["TN"] + metrics["FN"])
     metrics["R_change"] = metrics["TP"] / (metrics["TP"] + metrics["FN"])
@@ -292,54 +247,11 @@ def test(DATASET="Texas", CONFIG=None, n_ch_y=None, reduction_method=None):
     epoch = cd.epoch.numpy()
     speed = (epoch, training_time, timestamp)
     del cd
-    gc.collect()
+
     return metrics, speed
 
 if __name__ == "__main__":
-    JUST_ONE=False
-    N = 5
+
     DATASET = "Bolsena_30m"
-    print_metrics = ['AUC', 'ACC', 'Kappa', 'P_change', 'P_no_change', 'R_change', 'R_no_change', 'FAR']
-    # channels_list = [1, 2, 3, 4, 5, 8, 10, 15]
-    channels_list = [8]
-    reduction_method = 'kPCA_rbf'
-    
-    
-    if JUST_ONE:
-        print(test(DATASET))
-    else:
 
-        print("reminder to set save_images=False")
-        for channels_y in channels_list:
-
-            print_string = ''
-            
-            with open(f'logs/{DATASET}/I2INet_{reduction_method}_results.txt', 'a') as f:
-                f.write(f"Channels_y: {channels_y} --------------------------\n")
-            
-            metrics_list = []
-
-            for i in range(N):
-                metrics_list.append([])
-                tf.keras.backend.clear_session()
-                metrics, _ = test(DATASET, n_ch_y=channels_y, reduction_method=reduction_method)
-                metrics_list[-1].append(np.fromiter(metrics.values(), dtype=np.float32))
-
-            metrics_array = np.array(metrics_list)
-            mean = np.mean(metrics_array, axis=0)
-            std = np.std(metrics_array, axis=0)
-        
-            for idx, metric_name in enumerate(metrics.keys()):
-                if metric_name not in print_metrics:
-                    continue
-                # print(f"{metric_name}: {mean[idx]} +/- {std[idx]}")
-                print_string += f"{mean[0,idx]} {std[0,idx]} "
-
-            print_string += '\n'
-
-            # write print_string to the end of results.txt file
-            with open(f'logs/{DATASET}/I2INet_{reduction_method}_results.txt', 'a') as f:
-                f.write(print_string)
-
-        print('Results:\n')
-        print(print_string)
+    print(test(DATASET))

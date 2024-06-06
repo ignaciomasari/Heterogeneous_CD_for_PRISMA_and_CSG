@@ -6,7 +6,6 @@ from pydensecrf.utils import create_pairwise_bilateral
 from pydensecrf.utils import create_pairwise_gaussian
 import numpy as np
 
-
 @tf.function(reduce_retracing=True)
 def threshold_otsu(image):
     """Return threshold value based on Otsu's method. Adapted to tf from sklearn
@@ -78,7 +77,6 @@ def threshold_otsu(image):
     threshold = bin_centers[:-1][idx]
     return threshold
 
-
 def _dense_gaussian_filtering(x, y, difference_img, **kwargs):
     """
         Concerning the filtering, the method proposed in
@@ -127,7 +125,6 @@ def _dense_gaussian_filtering(x, y, difference_img, **kwargs):
     heatmap = np.reshape(heatmap[0, ...], (1, W, H, 1))
     return tf.convert_to_tensor(heatmap)
 
-
 def histogram_equalization(image):
     """
         I need a docstring, Luigi!
@@ -144,24 +141,6 @@ def histogram_equalization(image):
     px_map = tf.cast(px_map, tf.uint8)
     eq_hist = tf.expand_dims(tf.gather_nd(px_map, tf.cast(image, tf.int32)), 2)
     return eq_hist
-
-# def decorated_median_filter(static_name, pre_process=histogram_equalization, **kwargs):
-#     """
-#         Wrap a tfa median filter with TensorBoard decorator and specify arguments
-#         Input:
-#             model - ChangeDetector, the model the filter is used with
-#             static_name - str, passed to decorators.image_to_tensorboard()
-#             pre_process - callable, passed to decorators.image_to_tensorboard()
-#             **kwargs - passed to tfa.image.median_filter2d
-#         Output:
-#             callable - takes input image as tfa.image.median_filter2d
-#     """
-
-#     @image_to_tensorboard(static_name=static_name)  # , pre_process=pre_process)
-#     def median_filter2d(self, x, y, difference_img):
-#         return tfa.image.median_filter2d(difference_img, **kwargs)
-
-#     return median_filter2d
 
 def decorated_median_filter(static_name, pre_process=histogram_equalization, **kwargs):
     """
@@ -191,7 +170,6 @@ def decorated_median_filter(static_name, pre_process=histogram_equalization, **k
         return medians
 
     return median_filter2d
-
 
 def decorated_gaussian_filter(static_name, pre_process=histogram_equalization, sd_gauss=2, compat_gauss=1, sd_bilateral=2, schan_bilateral=1, compat_bilateral=2):
     """

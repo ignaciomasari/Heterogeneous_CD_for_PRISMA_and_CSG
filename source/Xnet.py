@@ -1,5 +1,4 @@
 import os
-import gc
 
 # Set loglevel to suppress tensorflow GPU messages
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
@@ -17,20 +16,19 @@ class XNet(ChangeDetector):
     def __init__(self, translation_spec, **kwargs):
         """
                 Input:
-                    translation_spec - dict with keys 'enc_X', 'enc_Y', 'dec_X', 'dec_Y'.
-                                       Values are passed as kwargs to the
-                                       respective ImageTranslationNetwork's
-                    cycle_lambda=2 - float, loss weight
-                    cross_lambda=1 - float, loss weight
-                    l2_lambda=1e-3 - float, loss weight
-                    kernels_lambda - float, loss weight
-                    learning_rate=1e-5 - float, initial learning rate for
+                    translation_spec - dict with keys 'X_to_Y', 'Y_to_X'.
+
+                    Values passed as kwargs:
+                    W_CYCLE=2 - float, loss weight
+                    W_TRAN=3 - float, loss weight
+                    W_REG=1e-3 - float, loss weight
+                    learning_rate=1e-4 - float, initial learning rate for
                                          ExponentialDecay
-                    clipnorm=None - gradient norm clip value, passed to
+                    clipnorm=1 - gradient norm clip value, passed to
                                     tf.clip_by_global_norm if not None
-                    logdir=None - path to log directory. If provided, tensorboard
-                                  logging of training and evaluation is set up at
-                                  'logdir/timestamp/' + 'train' and 'evaluation'
+                    logdir=./logs/{dataset_name}/ - path to log directory. If provided, tensorboard
+                                                    logging of training and evaluation is set up at
+                                                    'logdir/timestamp/' + 'train' and 'evaluation'
         """
 
         super().__init__(**kwargs)
@@ -171,17 +169,22 @@ class XNet(ChangeDetector):
         self.train_metrics["l2"].update_state(l2_loss)
         self.train_metrics["total"].update_state(total_loss)
 
-def test(DATASET="Texas", CONFIG=None, n_ch_y=None, reduction_method=None):
+def test(DATASET="E_R2", CONFIG=None, n_ch_y=None, reduction_method=None):
     """
+    XNet from L. T. Luppino et al., "Deep Image Translation With an 
+    Affinity-Based Change Prior for Unsupervised Multimodal Change Detection,"
+    in IEEE Transactions on Geoscience and Remote Sensing, vol. 60, pp. 1-22,
+    2022, Art no. 4700422, doi: 10.1109/TGRS.2021.3056196
+
+    Steps:
     1. Fetch data (x, y, change_map)
     2. Compute/estimate A_x and A_y (for patches)
     3. Compute change_prior
-    4. Define dataset with (x, A_x, y, A_y, p). Choose patch size compatible
+    4. Define dataset with (x, A_x, y, A_y, alpha). Choose patch size compatible
        with affinity computations.
-    5. Train CrossCyclicImageTransformer unsupervised
-        a. Evaluate the image transformations in some way?
+    5. Train XNet unsupervised
     6. Evaluate the change detection scheme
-        a. change_map = threshold [(x - f_y(y))/2 + (y - f_x(x))/2]
+        a. change_map = threshold (CRF[(x - f_y(y))/2 + (y - f_x(x))/2])
     """
     if CONFIG is None:
         CONFIG = get_config_Xnet(DATASET)
@@ -195,15 +198,17 @@ def test(DATASET="Texas", CONFIG=None, n_ch_y=None, reduction_method=None):
     print(f"Loading {DATASET} data")
     x_im, y_im, EVALUATE, (C_X, C_Y) = datasets.fetch(DATASET, **CONFIG)
     if tf.config.list_physical_devices("GPU") and not CONFIG["debug"]:
-        NF1 = 100
-        NF2 = 50
-        NF3 = 20
+        
+        NF1 = CONFIG["NF1"]
+        NF2 = CONFIG["NF2"]
+        NF3 = CONFIG["NF3"]
 
-        FS1 = 3
-        FS2 = 3
-        FS3 = 3
-        FS4 = 3
-        print("here")
+        FS1 = CONFIG["FS1"]
+        FS2 = CONFIG["FS2"]
+        FS3 = CONFIG["FS3"]
+        FS4 = CONFIG["FS4"]
+
+        print("working with GPU")
         NETWORK_SPEC = {
             "X_to_Y": {"input_chs": C_X, "filter_spec": [
                                                             [C_X, NF1, FS1, 1],
@@ -219,7 +224,7 @@ def test(DATASET="Texas", CONFIG=None, n_ch_y=None, reduction_method=None):
                                                         ]},
         }
     else:
-        print("why here?")
+        print("working with CPU")
         FS1 = 3
         NETWORK_SPEC = {
             "X_to_Y": {"input_chs": C_X, "filter_spec": [C_X, C_Y, FS1, 1]},
@@ -278,9 +283,7 @@ def test(DATASET="Texas", CONFIG=None, n_ch_y=None, reduction_method=None):
         cd.change_map_metrics.keys()
     ):
         metrics[key] = cd.metrics_history[key][-1]
-    # metrics["F1"] = metrics["TP"] / (
-    #     metrics["TP"] + 0.5 * (metrics["FP"] + metrics["FN"])
-    # )
+
     metrics["P_change"] = metrics["TP"] / (metrics["TP"] + metrics["FP"])
     metrics["P_no_change"] = metrics["TN"] / (metrics["TN"] + metrics["FN"])
     metrics["R_change"] = metrics["TP"] / (metrics["TP"] + metrics["FN"])
@@ -290,54 +293,11 @@ def test(DATASET="Texas", CONFIG=None, n_ch_y=None, reduction_method=None):
     epoch = cd.epoch.numpy()
     speed = (epoch, training_time, timestamp)
     del cd
-    gc.collect()
+
     return metrics, speed
 
 if __name__ == "__main__":
-    JUST_ONE=False
-    N = 5
-    DATASET = "LUCCA"
-    print_metrics = ['AUC', 'ACC', 'Kappa', 'P_change', 'P_no_change', 'R_change', 'R_no_change', 'FAR']
-    # channels_list = [1, 2, 3, 4, 5, 8, 10, 15]
-    channels_list = [2]
-    reduction_method = 'UMAP'
-    
-    
-    if JUST_ONE:
-        print(test(DATASET))
-    else:
 
-        print("reminder to set save_images=False")
-        for channels_y in channels_list:
+    DATASET = "Bolsena_30m"
 
-            print_string = ''
-            
-            with open(f'logs/{DATASET}/XNet_{reduction_method}_results.txt', 'a') as f:
-                f.write(f"Channels_y: {channels_y} --------------------------\n")
-            
-            metrics_list = []
-
-            for i in range(N):
-                metrics_list.append([])
-                tf.keras.backend.clear_session()
-                metrics, _ = test(DATASET, n_ch_y=channels_y, reduction_method=reduction_method)
-                metrics_list[-1].append(np.fromiter(metrics.values(), dtype=np.float32))
-
-            metrics_array = np.array(metrics_list)
-            mean = np.mean(metrics_array, axis=0)
-            std = np.std(metrics_array, axis=0)
-        
-            for idx, metric_name in enumerate(metrics.keys()):
-                if metric_name not in print_metrics:
-                    continue
-                # print(f"{metric_name}: {mean[idx]} +/- {std[idx]}")
-                print_string += f"{mean[0,idx]} {std[0,idx]} "
-
-            print_string += '\n'
-
-            # write print_string to the end of results.txt file
-            with open(f'logs/{DATASET}/XNet_{reduction_method}_results.txt', 'a') as f:
-                f.write(print_string)
-
-        print('Results:\n')
-        print(print_string)
+    print(test(DATASET))

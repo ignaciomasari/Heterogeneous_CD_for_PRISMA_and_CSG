@@ -1,5 +1,5 @@
 import os
-import gc
+
 
 # Set loglevel to suppress tensorflow GPU messages
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
@@ -233,16 +233,12 @@ class Kern_AceNet(ChangeDetector):
 
 def test(DATASET="Texas", CONFIG=None, n_ch_y=None, reduction_method=None):
     """
-    1. Fetch data (x, y, change_map)
-    2. Compute/estimate A_x and A_y (for patches)
-    3. Compute change_prior
-    4. Define dataset with (x, A_x, y, A_y, p). Choose patch size compatible
-       with affinity computations.
-    5. Train CrossCyclicImageTransformer unsupervised
-        a. Evaluate the image transformations in some way?
-    6. Evaluate the change detection scheme
-        a. change_map = threshold [(x - f_y(y))/2 + (y - f_x(x))/2]
+    kernelized AutoEncoder from L. T. Luppino et al., "Code-Aligned Autoencoders
+    for Unsupervised Change Detection in Multimodal Remote Sensing Images,"
+    in IEEE Transactions on Neural Networks and Learning Systems, vol. 35, no. 1,
+    pp. 60-72, Jan. 2024, doi: 10.1109/TNNLS.2022.3172183
     """
+    
     if CONFIG is None:
         CONFIG = get_config_kACE(DATASET)
 
@@ -260,7 +256,7 @@ def test(DATASET="Texas", CONFIG=None, n_ch_y=None, reduction_method=None):
     x_im, y_im, EVALUATE, (C_X, C_Y) = datasets.fetch(DATASET, **CONFIG)
     if tf.config.list_physical_devices("GPU") and not CONFIG["debug"]:
         C_CODE = 3
-        print("here")
+        print("working with GPU")
         TRANSLATION_SPEC = {
             "enc_X": {"input_chs": C_X, "filter_spec": [50, 50, C_CODE]},
             "enc_Y": {"input_chs": C_Y, "filter_spec": [50, 50, C_CODE]},
@@ -268,7 +264,7 @@ def test(DATASET="Texas", CONFIG=None, n_ch_y=None, reduction_method=None):
             "dec_Y": {"input_chs": C_CODE, "filter_spec": [50, 50, C_Y]},
         }
     else:
-        print("why here?")
+        print("working with CPU")
         C_CODE = 1
         TRANSLATION_SPEC = {
             "enc_X": {"input_chs": C_X, "filter_spec": [C_CODE]},
@@ -301,9 +297,7 @@ def test(DATASET="Texas", CONFIG=None, n_ch_y=None, reduction_method=None):
         cd.change_map_metrics.keys()
     ):
         metrics[key] = cd.metrics_history[key][-1]
-    # metrics["F1"] = metrics["TP"] / (
-    #     metrics["TP"] + 0.5 * (metrics["FP"] + metrics["FN"])
-    # )
+
     metrics["P_change"] = metrics["TP"] / (metrics["TP"] + metrics["FP"])
     metrics["P_no_change"] = metrics["TN"] / (metrics["TN"] + metrics["FN"])
     metrics["R_change"] = metrics["TP"] / (metrics["TP"] + metrics["FN"])
@@ -313,7 +307,7 @@ def test(DATASET="Texas", CONFIG=None, n_ch_y=None, reduction_method=None):
     epoch = cd.epoch.numpy()
     speed = (epoch, training_time, timestamp)
     del cd
-    gc.collect()
+
     return metrics, speed
 
 if __name__ == "__main__":

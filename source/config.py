@@ -11,8 +11,8 @@ def get_config(dataset_name, debug=False):
         "save_images": True,  # bool, wheter to store images after training
         "channel_x": [1, 2, 3],
         "channel_y": [1, 2, 3],
-        "n_channels_y":2,
-        "reduction_method":"kPCA_rbf",
+        "n_channels_y":1,
+        "reduction_method":"UMAP",
         "filter_": decorated_median_filter("z_median_filtered_diff"),
         "final_filter": decorated_gaussian_filter("z_gaussian_filtered_diff", sd_gauss=2, compat_gauss=3, sd_bilateral=3, schan_bilateral=1, compat_bilateral=2),
         "patience": 10,  # epochs after which training stops if kernel loss does not improve much
@@ -76,18 +76,13 @@ def get_config_Xnet(dataset_name, debug=False):
             "W_CYCLE": 2,
             "PRE_TRAIN": False,
             "UPDATE_ALPHA":False,
-        }
-    )
-    return CONFIG
-
-def get_config_CGAN(dataset_name, debug=False):
-    CONFIG = get_config(dataset_name, debug=debug)
-    CONFIG.update(
-        {
-            "Lambda": float(5),  # weight for L1 term
-            "patch_size": int(5),  # patch size of Niu et al. 2019
-            "learning_rate": 1e-5,
-            "batch_size": 200,
+            "NF1": 100,
+            "NF2": 50,
+            "NF3": 20,
+            "FS1": 3,
+            "FS2": 3,
+            "FS3": 3,
+            "FS4": 3,
         }
     )
     return CONFIG

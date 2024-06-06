@@ -5,12 +5,10 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
 import re
 from itertools import count
-
 import numpy as np
 import tensorflow as tf
 from scipy.io import loadmat, savemat
 from change_priors import eval_prior, remove_borders, image_in_patches
-
 
 def load_prior(name, expected_hw=None):
     """ Load prior from disk, validate dimensions and force shape to (h, w, 1) """
@@ -27,7 +25,6 @@ def load_prior(name, expected_hw=None):
         prior = prior[..., np.newaxis]
     return prior
 
-
 def evaluate_prior(name, x, y, **kwargs):
     alpha = eval_prior(name, x, y, **kwargs)
     varname = re.sub(r"\W+", "", "aff" + str(x.shape[:2]))
@@ -40,168 +37,7 @@ def evaluate_prior(name, x, y, **kwargs):
     savemat(prior_path, mat)
     return alpha
 
-
-def _denmark(reduce=False):
-    """ Load Denmark dataset from .mat """
-    mat = loadmat("data/Denmark/EMISAR_Foulum_PolSAR_logIntensity_CLband.mat")
-
-    t1 = np.array(mat["imgCx"], dtype=np.single)
-    t2 = np.array(mat["imgLy"], dtype=np.single)
-    t1, t2 = _clip(t1), _clip(t2)
-    change_mask = tf.convert_to_tensor(mat["GT"], dtype=tf.bool)
-    assert t1.shape[:2] == t2.shape[:2] == change_mask.shape[:2]
-    if change_mask.ndim == 2:
-        change_mask = change_mask[..., np.newaxis]
-    return t1, t2, change_mask
-
-
-def _uk(reduce=True):
-    """ Load UK dataset from .mat """
-    mat = loadmat("data/UK/UK.mat")
-
-    t1 = np.array(mat["t1"], dtype=np.single)
-    t2 = np.array(mat["t2"], dtype=np.single)
-    t1, t2 = _clip(t1), _clip(t2[..., np.newaxis])
-    change_mask = tf.convert_to_tensor(mat["ROI"], dtype=tf.bool)
-    assert t1.shape[:2] == t2.shape[:2] == change_mask.shape[:2]
-    if change_mask.ndim == 2:
-        change_mask = change_mask[..., np.newaxis]
-    if reduce:
-        print("Reducing")
-        reduction_ratios = (5, 5)
-        new_dims = list(map(lambda a, b: a // b, change_mask.shape, reduction_ratios))
-        t1 = tf.cast(tf.image.resize(t1, new_dims, antialias=True), dtype=tf.float32)
-        t2 = tf.cast(tf.image.resize(t2, new_dims, antialias=True), dtype=tf.float32)
-        change_mask = tf.cast(
-            tf.image.resize(tf.cast(change_mask, tf.uint8), new_dims, antialias=True),
-            tf.bool,
-        )
-
-    return t1, t2, change_mask
-
-
-def _italy(reduce=False):
-    """ Load Italy dataset from .mat """
-    mat = loadmat("data/Italy/Italy.mat")
-
-    t1 = np.array(mat["t1"], dtype=np.single)
-    t2 = np.array(mat["t2"], dtype=np.single)
-    change_mask = np.array(mat["ROI"], dtype=np.bool)
-    if t1.shape[-1] == 3:
-        t1 = t1[..., 0]
-    t1, t2, change_mask = (
-        remove_borders(t1, 2),
-        remove_borders(t2, 2),
-        remove_borders(change_mask, 2),
-    )
-    t1, t2 = _clip(t1[..., np.newaxis]), _clip(t2)
-    change_mask = tf.convert_to_tensor(change_mask, dtype=tf.bool)
-    assert t1.shape[:2] == t2.shape[:2] == change_mask.shape[:2]
-    if change_mask.ndim == 2:
-        change_mask = change_mask[..., np.newaxis]
-    change_mask = change_mask[..., :1]
-    savemat(
-        "data/Italy/Italy_clipped.mat",
-        {"t1": t1.numpy(), "t2": t2.numpy(), "ROI": change_mask.numpy()},
-    )
-    return t1, t2, change_mask
-
-
-def _france(reduce=True):
-    """Load France dataset from .mat"""
-    mat = loadmat("data/France/France.mat")
-
-    t1 = np.array(mat["t1"], dtype=np.single)
-    t2 = np.array(mat["t2"], dtype=np.single)
-    t1, t2 = _clip(t1), _clip(t2)
-    change_mask = tf.convert_to_tensor(mat["ROI"], dtype=tf.bool)
-    assert t1.shape[:2] == t2.shape[:2] == change_mask.shape[:2]
-    if change_mask.ndim == 2:
-        change_mask = change_mask[..., np.newaxis]
-    if reduce:
-        print("Reducing")
-        reduction_ratios = (5, 5)
-        new_dims = list(map(lambda a, b: a // b, change_mask.shape, reduction_ratios))
-        t1 = tf.cast(tf.image.resize(t1, new_dims, antialias=True), dtype=tf.float32)
-        t2 = tf.cast(tf.image.resize(t2, new_dims, antialias=True), dtype=tf.float32)
-        change_mask = tf.cast(
-            tf.image.resize(tf.cast(change_mask, tf.uint8), new_dims, antialias=True),
-            tf.bool,
-        )
-    t1, t2, change_mask = (
-        remove_borders(t1, 2),
-        remove_borders(t2, 2),
-        remove_borders(change_mask, 2),
-    )
-    savemat(
-        "data/France/France_clipped.mat",
-        {"t1": t1.numpy(), "t2": t2.numpy(), "ROI": change_mask.numpy()},
-    )
-    return t1, t2, change_mask
-
-
-def _california(reduce=False):
-    """Load California dataset from .mat"""
-    os.listdir
-    mat = loadmat("./data/California/UiT_HCD_California_2017.mat")
-
-    t1 = np.array(mat["t1_L8_clipped"], dtype=np.float32)
-    t2 = np.array(mat["logt2_clipped"], dtype=np.float32)
-    change_mask = tf.convert_to_tensor(mat["ROI"], dtype=tf.bool)
-    assert t1.shape[:2] == t2.shape[:2] == change_mask.shape[:2]
-    if change_mask.ndim == 2:
-        change_mask = change_mask[..., np.newaxis]
-    if reduce:
-        print("Reducing")
-        reduction_ratios = (4, 4)
-        new_dims = list(map(lambda a, b: a // b, change_mask.shape, reduction_ratios))
-        t1 = tf.cast(tf.image.resize(t1, new_dims, antialias=True), dtype=tf.float32)
-        t2 = tf.cast(tf.image.resize(t2, new_dims, antialias=True), dtype=tf.float32)
-        change_mask = tf.cast(
-            tf.image.resize(tf.cast(change_mask, tf.uint8), new_dims, antialias=True),
-            tf.bool,
-        )
-
-    t1, t2, change_mask = (
-        remove_borders(t1, 2),
-        remove_borders(t2, 2),
-        remove_borders(change_mask, 2),
-    )
-    savemat(
-        "data/California/California_clipped.mat",
-        {"t1": t1.numpy(), "t2": t2.numpy(), "ROI": change_mask.numpy()},
-    )
-    return t1, t2, change_mask
-
-
-def _texas(clip=True):
-    """Load Texas dataset from .mat"""
-    mat = loadmat("data/Texas/Cross-sensor-Bastrop-data.mat")
-    print("here")
-    t1 = np.array(mat["t1_L5"], dtype=np.single)
-    t2 = np.array(mat["t2_ALI"], dtype=np.single)
-    if clip:
-        print("clipping")
-        t1, t2 = _clip(t1), _clip(t2)
-    change_mask = tf.convert_to_tensor(mat["ROI_1"], dtype=tf.bool)
-    assert t1.shape[:2] == t2.shape[:2] == change_mask.shape[:2]
-    if change_mask.ndim == 2:
-        change_mask = change_mask[..., np.newaxis]
-
-    t1, t2, change_mask = (
-        remove_borders(t1, 2),
-        remove_borders(t2, 2),
-        remove_borders(change_mask, 2),
-    )
-
-    savemat(
-        "data/Texas/Texas_clipped.mat",
-        {"t1": t1.numpy(), "t2": t2.numpy(), "ROI": change_mask.numpy()},
-    )
-    return t1, t2, change_mask
-
-
-def _EmiliaRomagna(reduce=False, nc2=3):
+def _EmiliaRomagna(nc2=3):
     """ Load EmiliaRomagna dataset from .npy """
 
     t1 = np.load("./data/E_R/CSG_dualpol_20230521_mlk3_clip_resam.npy")
@@ -218,17 +54,6 @@ def _EmiliaRomagna(reduce=False, nc2=3):
     )
     t1, t2 = _clip(t1, log=True), _clip(t2)
 
-    # import matplotlib
-    # matplotlib.use("WebAgg")
-    # import matplotlib.pyplot as plt
-    # t22 = np.array(t2)
-    # plt.hist(t22.flatten(), bins=100)
-    # plt.show()
-
-    # t11 = np.array(t1)
-    # plt.hist(t11.flatten(), bins=100)
-    # plt.show()
-
     change_mask = tf.convert_to_tensor(change_mask, dtype=tf.bool)
     assert t1.shape[:2] == t2.shape[:2] == change_mask.shape[:2]
     if change_mask.ndim == 2:
@@ -236,11 +61,8 @@ def _EmiliaRomagna(reduce=False, nc2=3):
     change_mask = change_mask[..., :1]
     return t1, t2, change_mask
 
-def _EmiliaRomagna2(reduce=False, nc2=3, reduction_method="UMAP"):
-    """ Load EmiliaRomagna dataset from .npy """
-    # import matplotlib
-    # matplotlib.use("WebAgg")
-    # import matplotlib.pyplot as plt
+def _EmiliaRomagna2(nc2=3, reduction_method="UMAP"):
+    """ Load EmiliaRomagna 2 dataset from .npy """
 
     t1 = np.load("./data/E_R2/CSG_dualpol_20230521_mlk3_clip_resam.npy")
     t2 = np.load(f"./data/E_R2/PRISMA_{reduction_method}_{nc2}ch.npy")
@@ -268,17 +90,6 @@ def _EmiliaRomagna2(reduce=False, nc2=3, reduction_method="UMAP"):
     )
     t1, t2 = _clip(t1, log=True), _clip(t2)
 
-    # import matplotlib
-    # matplotlib.use("WebAgg")
-    # import matplotlib.pyplot as plt
-    # t22 = np.array(t2)
-    # plt.hist(t22.flatten(), bins=100)
-    # plt.show()
-
-    # t11 = np.array(t1)
-    # plt.hist(t11.flatten(), bins=100)
-    # plt.show()
-
     change_mask = tf.convert_to_tensor(change_mask, dtype=tf.int8)
     assert t1.shape[:2] == t2.shape[:2] == change_mask.shape[:2]
     if change_mask.ndim == 2:
@@ -286,7 +97,7 @@ def _EmiliaRomagna2(reduce=False, nc2=3, reduction_method="UMAP"):
     change_mask = change_mask[..., :1]
     return t1, t2, change_mask
 
-def _Lucca(reduce=False, nc2=3, reduction_method="UMAP"):
+def _Lucca(nc2=3, reduction_method="UMAP"):
     """ Load Lucca dataset from .npy """    
 
     t1 = np.load("./data/LUCCA/S1_VV_clipped_clip2_bands.npy")
@@ -317,7 +128,7 @@ def _Lucca(reduce=False, nc2=3, reduction_method="UMAP"):
     change_mask = change_mask[..., :1]
     return t1, t2, change_mask
 
-def _Bolsena_30m(reduce=False, nc2=3, reduction_method="UMAP"):
+def _Bolsena_30m(nc2=3, reduction_method="UMAP"):
     """ Load Bolsena lake at 30m spatial resolution dataset from .npy """
     t1 = np.load("./data/Bolsena_30m/CSG_SSAR2_GTC_B_DualPol_RD_F_20231004_Clipped_mod_resamp.npy")
     t2 = np.load(f"./data/Bolsena_30m/PRISMA_{reduction_method}_{nc2}ch.npy")
@@ -339,18 +150,6 @@ def _Bolsena_30m(reduce=False, nc2=3, reduction_method="UMAP"):
     )
     t1, t2 = _clip(t1, log=True), _clip(t2)
 
-    # import matplotlib
-    # matplotlib.use("WebAgg")
-    # import matplotlib.pyplot as plt
-    # # t22 = np.array(t2)
-    # # plt.hist(t22.flatten(), bins=100)
-    # # plt.show()
-
-    # t11 = np.array(t1)
-    # # plt.hist(t11.flatten(), bins=100)
-    # plt.imshow(t11[:,:,0])
-    # plt.show()
-
     change_mask = tf.convert_to_tensor(change_mask, dtype=tf.int8)
     assert t1.shape[:2] == t2.shape[:2] == change_mask.shape[:2]
     if change_mask.ndim == 2:
@@ -371,15 +170,6 @@ def _clip(image, log=False):
         Output:
             image - (h, w, c) image array normalized within [-1, 1]
     """
-    # temp = np.reshape(image, (-1, image.shape[-1]))
-
-    # limits = tf.reduce_mean(temp, 0) + 3.0 * tf.math.reduce_std(temp, 0)
-    # for i, limit in enumerate(limits):
-    #     channel = temp[:, i]
-    #     channel = tf.clip_by_value(channel, 0, limit)
-    #     ma, mi = tf.reduce_max(channel), tf.reduce_min(channel)
-    #     channel = 2.0 * ((channel) / (ma)) - 1
-    #     temp[:, i] = channel
 
     temp = np.reshape(image, (-1, image.shape[-1]))
 
@@ -396,7 +186,6 @@ def _clip(image, log=False):
         temp[:, i] = channel
 
     return tf.reshape(tf.convert_to_tensor(temp, dtype=tf.float32), image.shape)
-
 
 def _training_data_generator(x, y, p, patch_size):
     """
@@ -443,102 +232,12 @@ def _training_data_generator(x, y, p, patch_size):
 
     return gen, dtypes, shapes
 
-
 DATASETS = {
     "Bolsena_30m": _Bolsena_30m,
-    "Texas": _texas,
-    "California": _california,
-    "France": _france,
-    "Italy": _italy,
-    "UK": _uk,
-    "Denmark": _denmark,
     "E_R": _EmiliaRomagna,
     "E_R2": _EmiliaRomagna2,
     "LUCCA": _Lucca,
 }
-prepare_data = {
-    "Texas": True,
-    "California": True,
-    "France": True,
-    "Italy": False,
-    "UK": True,
-    "Denmark": False,
-    "E_R": False,
-    "E_R2": False,
-    "Bolsena_30m": False,
-    "LUCCA": False,
-}
-
-
-def fetch_fixed_dataset(name, patch_size=100, **kwargs):
-    """
-        Input:
-            name - dataset name, should be in DATASETS
-            kwargs - config {key: value} pairs.
-                     Key should be in DATASET_DEFAULT_CONFIG
-        Output:
-            training_data - tf.data.Dataset with (x, y, prior)
-                            shapes like (inf, patch_size, patch_size, ?)
-            evaluation_data - tf.data.Dataset with (x, y, change_map)
-                              shapes (1, h, w, ?)
-            channels - tuple (c_x, c_y), number of channels for domains x and y
-    """
-    x_im, y_im, target_cm = DATASETS[name](prepare_data[name])
-
-    try:
-        initial_cm = load_prior(name, x_im.shape[:2])
-    except (FileNotFoundError, KeyError) as e:
-        print("Evaluating and saving prior")
-        initial_cm = evaluate_prior(name, x_im, y_im, **kwargs)
-    cross_loss_weight = 1 - initial_cm
-    cross_loss_weight -= tf.reduce_min(cross_loss_weight)
-    cross_loss_weight /= tf.reduce_max(cross_loss_weight)
-
-    tr_gen, dtypes, shapes = _training_data_generator(
-        x_im, y_im, cross_loss_weight, patch_size
-    )
-    training_data = tf.data.Dataset.from_generator(tr_gen, dtypes, shapes)
-    training_data = training_data.prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
-
-    dataset = [tf.expand_dims(tensor, 0) for tensor in [x_im, y_im, target_cm]]
-    if not tf.config.list_physical_devices("GPU"):
-        dataset = [tf.image.central_crop(tensor, 0.1) for tensor in dataset]
-    evaluation_data = tf.data.Dataset.from_tensor_slices(tuple(dataset))
-
-    c_x, c_y = shapes[0][-1], shapes[1][-1]
-
-    return training_data, evaluation_data, (c_x, c_y)
-
-
-def fetch_CGAN(name, **kwargs):
-    """
-        Input:
-            name - dataset name, should be in DATASETS
-            kwargs - config {key: value} pairs.
-                     Key should be in DATASET_DEFAULT_CONFIG
-        Output:
-            training_data - tf.data.Dataset with (x, y, prior)
-                            shapes like (inf, patch_size, patch_size, ?)
-            evaluation_data - tf.data.Dataset with (x, y, change_map)
-                              shapes (1, h, w, ?)
-            channels - tuple (c_x, c_y), number of channels for domains x and y
-    """
-    ps = kwargs.get("patch_size")
-    y_im, x_im, target_cm = DATASETS[name](prepare_data[name])
-    if not tf.config.list_physical_devices("GPU"):
-        dataset = [
-            tf.image.central_crop(tensor, 0.1) for tensor in [x_im, y_im, target_cm]
-        ]
-    else:
-        dataset = [x_im, y_im, target_cm]
-    chs = [tensor.shape[-1] for tensor in dataset]
-    dataset = [remove_borders(tensor, ps) for tensor in dataset]
-    dataset = [tf.expand_dims(tensor, 0) for tensor in dataset]
-    evaluation_data = tf.data.Dataset.from_tensor_slices(tuple(dataset))
-    dataset = [image_in_patches(tensor, ps) for tensor in dataset]
-    tot_patches = dataset[0].shape[0]
-    return dataset[0], dataset[1], evaluation_data, (chs[0], chs[1]), tot_patches
-
 
 def fetch(name, **kwargs):
     """
@@ -556,7 +255,7 @@ def fetch(name, **kwargs):
 
     n_ch_y = kwargs['n_channels_y']
     red_method = kwargs['reduction_method']
-    x_im, y_im, target_cm = DATASETS[name](prepare_data[name], n_ch_y, red_method)
+    x_im, y_im, target_cm = DATASETS[name](n_ch_y, red_method)
 
     if not tf.config.list_physical_devices("GPU"):
         dataset = [

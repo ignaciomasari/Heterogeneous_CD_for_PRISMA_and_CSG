@@ -1,5 +1,4 @@
 import os
-import gc
 
 # Set loglevel to suppress tensorflow GPU messages
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
@@ -12,7 +11,6 @@ from config import get_config_SCCN
 from decorators import image_to_tensorboard, timed
 from tqdm import trange
 import numpy as np
-
 
 class SCCN(ChangeDetector):
     def __init__(self, translation_spec, **kwargs):
@@ -173,18 +171,12 @@ class SCCN(ChangeDetector):
                     self._optimizer_k.apply_gradients(zip(gradients_pre, targets_pre))
         tf.print("Pretrain done")
 
-
 def test(DATASET="Texas", CONFIG=None, n_ch_y=None, reduction_method=None):
     """
-    1. Fetch data (x, y, change_map)
-    2. Compute/estimate A_x and A_y (for patches)
-    3. Compute change_prior
-    4. Define dataset with (x, A_x, y, A_y, p). Choose patch size compatible
-       with affinity computations.
-    5. Train CrossCyclicImageTransformer unsupervised
-        a. Evaluate the image transformations in some way?
-    6. Evaluate the change detection scheme
-        a. change_map = threshold [(x - f_y(y))/2 + (y - f_x(x))/2]
+    SCCN from J. Liu, M. Gong, K. Qin and P. Zhang, "A Deep Convolutional Coupling
+    Network for Change Detection Based on Heterogeneous Optical and Radar Images,"
+    in IEEE Transactions on Neural Networks and Learning Systems, vol. 29, no. 3,
+    pp. 545-559, March 2018, doi: 10.1109/TNNLS.2016.2636227.
     """
     if CONFIG is None:
         CONFIG = get_config_SCCN(DATASET)
@@ -233,7 +225,7 @@ def test(DATASET="Texas", CONFIG=None, n_ch_y=None, reduction_method=None):
             for x, y, _ in EVALUATE.batch(1):
                 Pu = 1.0 - tf.cast(cd._change_map(cd([x, y])), dtype=tf.float32)
             del TRAIN
-            gc.collect()
+
             TRAIN = tf.data.Dataset.from_tensor_slices((x_im, y_im, Pu))
             TRAIN = TRAIN.prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
 
@@ -243,9 +235,7 @@ def test(DATASET="Texas", CONFIG=None, n_ch_y=None, reduction_method=None):
         cd.change_map_metrics.keys()
     ):
         metrics[key] = cd.metrics_history[key][-1]
-    # metrics["F1"] = metrics["TP"] / (
-    #     metrics["TP"] + 0.5 * (metrics["FP"] + metrics["FN"])
-    # )
+
     metrics["P_change"] = metrics["TP"] / (metrics["TP"] + metrics["FP"])
     metrics["P_no_change"] = metrics["TN"] / (metrics["TN"] + metrics["FN"])
     metrics["R_change"] = metrics["TP"] / (metrics["TP"] + metrics["FN"])
@@ -254,56 +244,13 @@ def test(DATASET="Texas", CONFIG=None, n_ch_y=None, reduction_method=None):
     timestamp = cd.timestamp
     epoch = cd.epoch.numpy()
     speed = (epoch, training_time, timestamp)
-    gc.collect()
+    del cd
+
     return metrics, speed
 
-
 if __name__ == "__main__":
-    JUST_ONE=False
-    N = 5
+
     DATASET = "Bolsena_30m"
-    print_metrics = ['AUC', 'ACC', 'Kappa', 'P_change', 'P_no_change', 'R_change', 'R_no_change', 'FAR']
-    channels_list = [1, 2, 3, 4, 5, 8, 10, 15]
-    # channels_list = [8, 10]
-    reduction_method = 'UMAP'
+
+    print(test(DATASET))
     
-    
-    if JUST_ONE:
-        print(test(DATASET))
-    else:
-
-        print("reminder to set save_images=False")
-        for channels_y in channels_list:
-
-            print_string = ''
-            
-            with open(f'logs/{DATASET}/SCCN_{reduction_method}_results.txt', 'a') as f:
-                f.write(f"Channels_y: {channels_y} --------------------------\n")
-            
-            metrics_list = []
-
-            for i in range(N):
-                metrics_list.append([])
-                tf.keras.backend.clear_session()
-                metrics, _ = test(DATASET, n_ch_y=channels_y, reduction_method=reduction_method)
-                metrics_list[-1].append(np.fromiter(metrics.values(), dtype=np.float32))
-
-            metrics_array = np.array(metrics_list)
-            mean = np.mean(metrics_array, axis=0)
-            std = np.std(metrics_array, axis=0)
-        
-            for idx, metric_name in enumerate(metrics.keys()):
-                if metric_name not in print_metrics:
-                    continue
-                # print(f"{metric_name}: {mean[idx]} +/- {std[idx]}")
-                print_string += f"{mean[0,idx]} {std[0,idx]} "
-
-            print_string += '\n'
-
-            # write print_string to the end of results.txt file
-            with open(f'logs/{DATASET}/SCCN_{reduction_method}_results.txt', 'a') as f:
-                f.write(print_string)
-
-        print('Results:\n')
-        print(print_string)
-

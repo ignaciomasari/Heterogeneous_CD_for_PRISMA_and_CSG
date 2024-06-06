@@ -101,7 +101,6 @@ class ChangeDetector:
 
         return tf.expand_dims(d / tf.reduce_max(d), -1)
 
-    # @tf.function
     def _difference_img(self, x, y, x_hat=None, y_hat=None):
         """
         Should compute the two possible change maps and do the 5 method
@@ -122,7 +121,6 @@ class ChangeDetector:
         # Return expanded dims (rank = 4)?
         return d
 
-    # @tf.function
     def _change_map(self, difference_img):
         """
             Input:
