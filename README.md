@@ -34,6 +34,7 @@ source
 ```
 
 [1] X. Niu, M. Gong, T. Zhan, and Y. Yang, “A conditional adversarial network for change detection in heterogeneous images,” IEEE Geosci. Remote Sens. Lett., vol. 16, no. 1, pp. 45–49, 2018.
+
 [2] J. Liu, M. Gong, K. Qin, and P. Zhang, “A deep convolutional coupling network for change detection based on heterogeneous optical and radar images,” IEEE Trans. Neural Netw. Learn. Syst., vol. 29, no. 3, pp. 545–559, 2016.
 
 
